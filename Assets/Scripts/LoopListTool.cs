@@ -6,22 +6,26 @@ using UnityEngine.UI;
 
 public struct LoopData
 {
+    //可扩充。这里的属性随便改。根据需要的数据添加。
     public string name;
 }
 
 public class LoopItem
 {
-    public GameObject gameObject;
-    public RectTransform rectTransform;
-    public int dataIndex;
-    public bool isWork;
+    public GameObject gameObject;//不能删除，核心代码必用
+    public RectTransform rectTransform;//不能删除，核心代码必用
+    public int dataIndex;//不能删除，核心代码必用
+    public bool isWork;//不能删除，核心代码必用
 
-    public Text name;
+    public Text name;//可删除，和具体逻辑有关
+    //这里可以添加自定义的属性
 }
 
 public class LoopListTool : MonoBehaviour, IPointerExitHandler, IPointerDownHandler, IPointerUpHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
 {
     public RectTransform origItemTrans;
+
+    [HideInInspector]
     [SerializeField]
     public float space = 10;
 
@@ -30,12 +34,19 @@ public class LoopListTool : MonoBehaviour, IPointerExitHandler, IPointerDownHand
     public List<LoopItem> itemPool = new List<LoopItem>();
     public List<LoopItem> showItems = new List<LoopItem>();
 
+    [HideInInspector]
     [SerializeField]
     public float padding_left;
+
+    [HideInInspector]
     [SerializeField]
     public float padding_right;
+
+    [HideInInspector]
     [SerializeField]
     public float padding_top;
+
+    [HideInInspector]
     [SerializeField]
     public float padding_bottom;
 
@@ -104,7 +115,9 @@ public class LoopListTool : MonoBehaviour, IPointerExitHandler, IPointerDownHand
     }
 
     public void Awake()
-    {     
+    {
+
+        //awake中为测试代码。LoopData这里生成临时数据
         List<LoopData> mData = new List<LoopData>();
         for (int i = 0; i < 9; i++)
         {
@@ -113,29 +126,55 @@ public class LoopListTool : MonoBehaviour, IPointerExitHandler, IPointerDownHand
             mData.Add(loopData);
         }
 
-        this.MInit(mData, (mLoopItem, mLoopData, dataIndex) =>
+        var isInit = this.MInit(mData, (mLoopItem, mLoopData, dataIndex) =>
         {
             mLoopItem.name.text = mLoopData[dataIndex].name;
         });
 
-        this.InitItem();
+        if(isInit)
+            this.InitItem();
     }
 
-    public void MInit(List<LoopData> _data, Action<LoopItem, List<LoopData>, int> _dataDeal)
+    public bool MInit(List<LoopData> _data, Action<LoopItem, List<LoopData>, int> _dataDeal)
     {
-        this.rootTrans = this.gameObject.transform.GetComponent<RectTransform>();
+        this.rootTrans = this.gameObject.transform.GetComponent<RectTransform>();       
         if(this.origItemTrans == null )
             this.origItemTrans = this.rootTrans.Find("rawItem").GetComponent<RectTransform>();
         if (this.origItemTrans == null)
         {
-            Debug.LogError("origItemTrans 错误 没有原始Item");
-            return;
+            Debug.LogError("origItemTrans 错误 没有原始Item。请在root下一层 创建一个名字为rawItem的gameObject");
+            return false;
         }               
+
+        Mask m_mask = this.rootTrans.GetComponent<Mask>();
+        if(m_mask == null)
+        {
+            Debug.LogError("rootTrans中，没有与脚本同级里mask。");
+            return false;
+        }
+        if(m_mask && !m_mask.enabled )
+        {
+            Debug.LogError("rootTrans中，没有启用与脚本同级的mask组件。");
+            return false;
+        }
+
+        Image m_image = this.rootTrans.GetComponent<Image>();
+        if (m_image == null)
+        {
+            Debug.LogError("rootTrans中，没有与脚本同级里Image。");
+            return false;
+        }
+
+        if (m_mask && !m_image.enabled)
+        {
+            Debug.LogError("rootTrans中，没有启用与脚本同级的Image组件。");
+            return false;
+        }
 
         if (_data == null)
         {
             Debug.LogError("没有初始化data数据");
-            return;
+            return false;
         }
 
         itemCellWidth = origItemTrans.rect.width;
@@ -157,16 +196,12 @@ public class LoopListTool : MonoBehaviour, IPointerExitHandler, IPointerDownHand
 
         if (!this.horizontalType && !this.verticalType)
             this.horizontalType = true;
+
+        return true;
     }
 
     public void InitItem()
     {
-        //for (int i = 0; i < this.showItems.Count; i++)
-        //{
-        //    this.RecycleItem(this.showItems[i]);
-        //    this.showItems.Remove(this.showItems[i]);
-        //}
-
         if (horizontalType)
         {
             float posX = this.padding_left;
@@ -234,11 +269,22 @@ public class LoopListTool : MonoBehaviour, IPointerExitHandler, IPointerDownHand
         }
     }
 
+    public void ResetLayout()
+    {
+        for (int i = this.showItems.Count - 1; i >= 0; i--)
+        {
+            this.RecycleItem(this.showItems[i]);
+            this.showItems.Remove(this.showItems[i]);
+        }
+        this.InitItem();
+    }
+
 
     public void OnBeginDrag(PointerEventData eventData)
     {
         this.isDraging = true;
-        this.dragingMove = 0;
+        if (inertia)
+            this.dragingMove = 0;
     }
 
     public void OnDrag(PointerEventData eventData)
@@ -246,12 +292,14 @@ public class LoopListTool : MonoBehaviour, IPointerExitHandler, IPointerDownHand
         this.isDraging = true;
         if (this.horizontalType)
         {
-            this.dragingMove = eventData.delta.x;
+            if (inertia)
+                this.dragingMove = eventData.delta.x;
             this.LoopMove(eventData.delta.x);
         }
         else if(this.verticalType)
         {
-            this.dragingMove = eventData.delta.y;
+            if (inertia)
+                this.dragingMove = eventData.delta.y;
             this.LoopMove(eventData.delta.y);
         }
     }
@@ -480,7 +528,7 @@ public class LoopListTool : MonoBehaviour, IPointerExitHandler, IPointerDownHand
                         moveDelta = moveDelta * this.moveScale;
 
                         this.elasticMove = lastItemY;
-                        this.elasticTarget = bottomY;
+                        this.elasticTarget = this.bottomBorder + itemCellHeight;
                         this.dragingMove = 0;
                     }
                     else
@@ -658,17 +706,6 @@ public class LoopListTool : MonoBehaviour, IPointerExitHandler, IPointerDownHand
                 }
             }
         }
-        return newItem;
-    }
-
-    public LoopItem CreateNewItem(int dataIndex) 
-    {
-        LoopItem newItem = new LoopItem();
-        newItem.gameObject = GameObject.Instantiate(this.origItemTrans, this.rootTrans).gameObject;
-        newItem.rectTransform = newItem.gameObject.transform.GetComponent<RectTransform>();
-        newItem.dataIndex = dataIndex;
-        newItem.isWork = true;
-        newItem.gameObject.SetActive(true);
         if (horizontalType)
         {
             newItem.rectTransform.pivot = new Vector2(0, 0.5f);
@@ -681,6 +718,17 @@ public class LoopListTool : MonoBehaviour, IPointerExitHandler, IPointerDownHand
             newItem.rectTransform.anchorMin = new Vector2(0.5f, 1);
             newItem.rectTransform.anchorMax = new Vector2(0.5f, 1);
         }
+        return newItem;
+    }
+
+    public LoopItem CreateNewItem(int dataIndex) 
+    {
+        LoopItem newItem = new LoopItem();
+        newItem.gameObject = GameObject.Instantiate(this.origItemTrans, this.rootTrans).gameObject;
+        newItem.rectTransform = newItem.gameObject.transform.GetComponent<RectTransform>();
+        newItem.dataIndex = dataIndex;
+        newItem.isWork = true;
+        newItem.gameObject.SetActive(true);
 
         newItem.name = newItem.gameObject.transform.Find("Text").GetComponent<Text>();
         return newItem;
@@ -724,7 +772,7 @@ public class LoopListTool : MonoBehaviour, IPointerExitHandler, IPointerDownHand
         {
             float newCur = Mathf.SmoothDamp(elasticMove, elasticTarget, ref this.moveSpeed, 0.1f);
             this.LoopMove(newCur - elasticMove);
-            //Debug.LogError(newCur - elasticMove);
+            Debug.LogError(newCur - elasticMove);
             elasticMove = newCur;
             if (Mathf.Abs(this.moveSpeed) < 0.01f)
             {
